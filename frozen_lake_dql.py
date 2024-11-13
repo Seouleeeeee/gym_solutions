@@ -61,8 +61,8 @@ class FrozenLakeDQL():
         memory = ReplayMemory(self.replay_memory_size)
 
         # Create policy and target network. Number of nodes in the hidden layer can be adjusted.
-        policy_dqn = DQN(in_states=num_states, h1_nodes=num_states, out_actions=num_actions)
-        target_dqn = DQN(in_states=num_states, h1_nodes=num_states, out_actions=num_actions)
+        policy_dqn = DQN(in_states=num_states, h1_nodes=num_states, out_actions=num_actions) # HS Step 1 - Create policy network
+        target_dqn = DQN(in_states=num_states, h1_nodes=num_states, out_actions=num_actions) # HS Step 1 - Create target network
 
         # Make the target and policy networks the same (copy weights/biases from one network to the other)
         target_dqn.load_state_dict(policy_dqn.state_dict())
@@ -82,6 +82,7 @@ class FrozenLakeDQL():
         # Track number of steps taken. Used for syncing policy => target network.
         step_count=0
             
+        # HS Step 3 - Navigate agent into environment. Like generate training data
         for i in range(episodes):
             state = env.reset()[0]  # Initialize to state 0
             terminated = False      # True when agent falls in hole or reached goal
@@ -125,7 +126,7 @@ class FrozenLakeDQL():
                 epsilon_history.append(epsilon)
 
                 # Copy policy network to target network after a certain number of steps
-                if step_count > self.network_sync_rate:
+                if step_count > self.network_sync_rate: # HS Step 10 - Sync train and target network
                     target_dqn.load_state_dict(policy_dqn.state_dict())
                     step_count=0
 
@@ -162,7 +163,8 @@ class FrozenLakeDQL():
         target_q_list = []
 
         for state, action, new_state, reward, terminated in mini_batch:
-
+            
+            # HS Step 6 - Calculate the Reward using the equation which is going to be the output of target network
             if terminated: 
                 # Agent either reached goal (reward=1) or fell into hole (reward=0)
                 # When in a terminated state, target q value should be set to the reward.
@@ -174,17 +176,17 @@ class FrozenLakeDQL():
                         reward + self.discount_factor_g * target_dqn(self.state_to_dqn_input(new_state, num_states)).max()
                     )
 
-            # Get the current set of Q values
+            # HS Step 4 - Put the input to policy network
             current_q = policy_dqn(self.state_to_dqn_input(state, num_states))
             current_q_list.append(current_q)
 
-            # Get the target set of Q values
+            # Get the target set of Q values (HS Step 5 - Put the same input to target network)
             target_q = target_dqn(self.state_to_dqn_input(state, num_states)) 
             # Adjust the specific action to the target that was just calculated
-            target_q[action] = target
+            target_q[action] = target # HS Step 7 - Assign the target value to the target network
             target_q_list.append(target_q)
                 
-        # Compute loss for the whole minibatch
+        # Compute loss for the whole minibatch (HS Step 8 - Use target value to train train network)
         loss = self.loss_fn(torch.stack(current_q_list), torch.stack(target_q_list))
 
         # Optimize the model
